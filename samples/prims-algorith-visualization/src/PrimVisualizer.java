@@ -4,7 +4,6 @@ import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 
@@ -13,18 +12,30 @@ import sk.upjs.paz.graph.Graph;
 import sk.upjs.paz.graph.Vertex;
 import sk.upjs.paz.graph.visualization.GraphVisualizer;
 
+/**
+ * Visualizer for Prim's algorithm for fining minimum spanning tree of graph
+ */
 public class PrimVisualizer {
 
-   private static Color SPANNING_TREE_COLOR =  new Color(62, 210, 29);
+   private static Color SPANNING_TREE_COLOR = new Color(62, 210, 29);
 
    private static Color INCIDENT_EDGE_COLOR = new Color(224, 90, 13);
 
-   private static Color LOOP_EDGE_COLOR =  new Color(207, 217, 218);
+   private static Color LOOP_EDGE_COLOR = new Color(207, 217, 218);
 
+   /**
+    * Edges of minimum spanning tree
+    */
    private static Set<Edge> spanningTree = new HashSet<>();
 
+   /**
+    * Vertices inside spanning tree
+    */
    private static Set<Vertex> spanningTreeVertices = new HashSet<>();
 
+   /**
+    * Edge with lowest weight leading to the vertex
+    */
    private static Map<Vertex, Edge> shortestEdgeToVertex = new HashMap<>();
 
    public static void main(String[] args) {
@@ -40,20 +51,24 @@ public class PrimVisualizer {
       while (true) {
          visualizer.pause();
 
-         Optional<Edge> shortestEdge = shortestEdge();
-
-         if (shortestEdge.isPresent()) {
-            addToTree(shortestEdge.get(), visualizer);
-         } else {
+         Edge shortestEdge = shortestEdge();
+         if (shortestEdge == null) {
             System.out.println("No more edges to add to spanning tree");
             break;
          }
+
+         addToTree(shortestEdge, visualizer);
       }
    }
 
+   /**
+    * @return Randomly generated graph
+    */
    private static Graph generateRandomGraph() {
-      int vertices = 5 + new Random().nextInt(3);
-      int edges = vertices * 2 + new Random().nextInt(vertices * 2);
+      Random random = new Random();
+
+      int vertices = 5 + random.nextInt(3);
+      int edges = vertices * 2 + random.nextInt(vertices * 2);
 
       Graph graph = Graph.createRandomGraph(vertices, edges);
       graph.getEdges().forEach(edge -> {
@@ -61,27 +76,30 @@ public class PrimVisualizer {
          edge.setWeight(randomWeight);
       });
 
-      //      graph.getVertices().forEach(vertex -> {
-      //         if (vertex.getOutEdges().size() == 0) {
-      //            graph.removeVertex(vertex);
-      //         }
-      //      });
-
       return graph;
    }
 
+   /**
+    * @return Number rounded using half up method to the specified amount of digits
+    */
    private static double roundToDigits(double number, int digits) {
       return new BigDecimal(number)
             .setScale(digits, RoundingMode.HALF_UP)
             .doubleValue();
    }
 
+   /**
+    * @return Random vertex from graph
+    */
    private static Vertex getRandomVertex(Graph graph) {
       Vertex[] vertices = graph.getVertices().toArray(new Vertex[0]);
       int randomIndex = new Random().nextInt(vertices.length);
       return vertices[randomIndex];
    }
 
+   /**
+    * Add vertex to the tree and highlight it
+    */
    private static void addToTree(Vertex vertex, GraphVisualizer visualizer) {
       spanningTreeVertices.add(vertex);
 
@@ -92,6 +110,9 @@ public class PrimVisualizer {
       visualizer.setColor(vertex, SPANNING_TREE_COLOR);
    }
 
+   /**
+    * Add edge and vertices it connects to the tree and highlight them
+    */
    private static void addToTree(Edge edge, GraphVisualizer visualizer) {
       spanningTree.add(edge);
 
@@ -101,19 +122,32 @@ public class PrimVisualizer {
       visualizer.setColor(edge, SPANNING_TREE_COLOR);
    }
 
+   /**
+    * Update shortest distances to the vertices connected to added vertex
+    */
    private static void refreshShortestDistance(Vertex addedVertex) {
       addedVertex.getEdges()
                  .stream()
                  .filter(PrimVisualizer::incidentEdge)
-                 .forEach(edge -> {
-                    shortestEdgeToVertex.computeIfPresent(edge.getTarget(), (vertex, shortestEdge) -> {
-                       return shorterEdge(edge, shortestEdge);
-                    });
-
-                    shortestEdgeToVertex.putIfAbsent(edge.getTarget(), edge);
-                 });
+                 .forEach(PrimVisualizer::refreshEdgeDistance);
    }
 
+   /**
+    * Update shortest distances to vertices connected by the edge
+    */
+   private static void refreshEdgeDistance(Edge edge) {
+      shortestEdgeToVertex.compute(edge.getTarget(), (vertex, shortestEdge) -> {
+         return shortestEdge == null ? edge : shorterEdge(edge, shortestEdge);
+      });
+
+      shortestEdgeToVertex.compute(edge.getSource(), (vertex, shortestEdge) -> {
+         return shortestEdge == null ? edge : shorterEdge(edge, shortestEdge);
+      });
+   }
+
+   /**
+    * Highlights edges that can be added to the spanning tree
+    */
    private static void highlightNewIncidentEdges(Vertex vertex, GraphVisualizer visualizer) {
       vertex.getEdges()
             .stream()
@@ -121,6 +155,9 @@ public class PrimVisualizer {
             .forEach(edge -> visualizer.setColor(edge, INCIDENT_EDGE_COLOR));
    }
 
+   /**
+    * Greys out loop edges
+    */
    private static void lowlightNewLoopEdges(Vertex vertex, GraphVisualizer visualizer) {
       vertex.getEdges()
             .stream()
@@ -128,23 +165,36 @@ public class PrimVisualizer {
             .forEach(edge -> visualizer.setColor(edge, LOOP_EDGE_COLOR));
    }
 
-   private static Optional<Edge> shortestEdge() {
+   /**
+    * @return Shortest edge that can be added to the spanning tree
+    */
+   private static Edge shortestEdge() {
       return shortestEdgeToVertex.values()
                                  .stream()
                                  .filter(PrimVisualizer::incidentEdge)
-                                 .reduce(PrimVisualizer::shorterEdge);
+                                 .reduce(PrimVisualizer::shorterEdge)
+                                 .orElse(null);
    }
 
+   /**
+    * @return Edge can be added to the spanning tree
+    */
    private static boolean incidentEdge(Edge edge) {
       return spanningTreeVertices.contains(edge.getTarget()) ^ spanningTreeVertices.contains(edge.getSource());
    }
 
+   /**
+    * @return Adding edge would create a loop inside the graph
+    */
    private static boolean loopEdge(Edge edge) {
       return !spanningTree.contains(edge) &&
             spanningTreeVertices.contains(edge.getTarget()) &&
             spanningTreeVertices.contains(edge.getSource());
    }
 
+   /**
+    * @return Edge with lower weight
+    */
    private static Edge shorterEdge(Edge firstEdge, Edge secondEdge) {
       return firstEdge.getWeight() < secondEdge.getWeight() ? firstEdge : secondEdge;
    }
